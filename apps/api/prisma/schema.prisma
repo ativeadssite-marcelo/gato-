@@ -1,0 +1,291 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  consulta
+  vendedor
+  caixa
+  estoque
+  fiscal
+  gestor
+}
+
+enum Channel {
+  balcao
+  site
+}
+
+enum StockMoveType {
+  entrada
+  saida
+  transferencia_in
+  transferencia_out
+  inventario
+  reserva
+  baixa_reserva
+}
+
+enum QuoteStatus {
+  rascunho
+  enviada
+  aprovada
+  recusada
+  convertida
+}
+
+enum OrderStatus {
+  aberto
+  faturado
+  cancelado
+}
+
+enum FiscalStatus {
+  rascunho
+  enfileirado
+  autorizado
+  rejeitado
+  cancelado
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  tradeName String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  branches  Branch[]
+  users     User[]
+  products  Product[]
+  priceLists PriceList[]
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  cnpj      String
+  ie        String?
+  uf        String
+  city      String?
+  isHub     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  balances  StockBalance[]
+  moves     StockMove[]
+  quotes    Quote[]
+  orders    Order[]
+  access    UserBranchAccess[]
+
+  @@index([companyId])
+}
+
+model User {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  defaultBranchId String
+  defaultBranch   Branch   @relation(fields: [defaultBranchId], references: [id])
+  name            String
+  email           String   @unique
+  passwordHash    String
+  role            Role
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  branchAccess    UserBranchAccess[]
+  quotes          Quote[]
+  orders          Order[]
+  auditLogs       AuditLog[]
+}
+
+model UserBranchAccess {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  sku             String
+  name            String
+  oem             String?
+  ean             String?
+  ncm             String?
+  cest            String?
+  unit            String   @default("UN")
+  avgCost         Decimal  @default(0) @db.Decimal(14, 4)
+  markupPercent   Decimal  @default(0) @db.Decimal(8, 2)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  equivalentsFrom ProductEquivalent[] @relation("FromProduct")
+  equivalentsTo   ProductEquivalent[] @relation("ToProduct")
+  balances        StockBalance[]
+  moves           StockMove[]
+  prices          PriceListItem[]
+  quoteItems      QuoteItem[]
+  orderItems      OrderItem[]
+
+  @@unique([companyId, sku])
+}
+
+model ProductEquivalent {
+  id            String  @id @default(cuid())
+  fromProductId String
+  fromProduct   Product @relation("FromProduct", fields: [fromProductId], references: [id], onDelete: Cascade)
+  toProductId   String
+  toProduct     Product @relation("ToProduct", fields: [toProductId], references: [id], onDelete: Cascade)
+  note          String?
+
+  @@unique([fromProductId, toProductId])
+}
+
+model StockBalance {
+  id        String  @id @default(cuid())
+  branchId  String
+  branch    Branch  @relation(fields: [branchId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  qty       Decimal @default(0) @db.Decimal(14, 3)
+  reserved  Decimal @default(0) @db.Decimal(14, 3)
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, productId])
+}
+
+model StockMove {
+  id        String        @id @default(cuid())
+  branchId  String
+  branch    Branch        @relation(fields: [branchId], references: [id])
+  productId String
+  product   Product       @relation(fields: [productId], references: [id])
+  type      StockMoveType
+  qty       Decimal       @db.Decimal(14, 3)
+  note      String?
+  createdAt DateTime      @default(now())
+  createdBy String?
+
+  @@index([branchId, productId])
+}
+
+model PriceList {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  channel   Channel
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  items     PriceListItem[]
+
+  @@unique([companyId, channel])
+}
+
+model PriceListItem {
+  id          String    @id @default(cuid())
+  priceListId String
+  priceList   PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price       Decimal   @db.Decimal(14, 4)
+
+  @@unique([priceListId, productId])
+}
+
+model Quote {
+  id        String      @id @default(cuid())
+  branchId  String
+  branch    Branch      @relation(fields: [branchId], references: [id])
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  channel   Channel     @default(balcao)
+  customer  String?
+  status    QuoteStatus @default(rascunho)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  items     QuoteItem[]
+}
+
+model QuoteItem {
+  id        String  @id @default(cuid())
+  quoteId   String
+  quote     Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  qty       Decimal @db.Decimal(14, 3)
+  unitPrice Decimal @db.Decimal(14, 4)
+}
+
+model Order {
+  id        String      @id @default(cuid())
+  branchId  String
+  branch    Branch      @relation(fields: [branchId], references: [id])
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  quoteId   String?
+  status    OrderStatus @default(aberto)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  items     OrderItem[]
+  payments  Payment[]
+  fiscal    FiscalDocument[]
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  qty       Decimal @db.Decimal(14, 3)
+  unitPrice Decimal @db.Decimal(14, 4)
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method     String
+  amount     Decimal  @db.Decimal(14, 4)
+  providerId String?
+  status     String   @default("pendente")
+  createdAt  DateTime @default(now())
+}
+
+model FiscalDocument {
+  id         String       @id @default(cuid())
+  orderId    String
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type       String
+  status     FiscalStatus @default(rascunho)
+  accessKey  String?
+  providerId String?
+  xmlUrl     String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  payload   Json?
+  createdAt DateTime @default(now())
+}
