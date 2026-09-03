@@ -77,6 +77,12 @@ export class InventoryController {
   @Post('transfers')
   @Roles('gestor', 'estoque')
   transfer(@CurrentUser() user: RequestUser, @Body() dto: TransferDto) {
+    if (
+      !user.branchIds.includes(dto.fromBranchId) ||
+      !user.branchIds.includes(dto.toBranchId)
+    ) {
+      throw new ForbiddenException('Sem acesso a um dos hubs');
+    }
     return this.inventory.transfer({ ...dto, createdBy: user.id });
   }
 }

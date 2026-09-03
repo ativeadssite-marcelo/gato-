@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -48,7 +48,22 @@ export class CatalogService {
     });
   }
 
-  addEquivalent(fromProductId: string, toProductId: string, note?: string) {
+  async addEquivalent(
+    companyId: string,
+    fromProductId: string,
+    toProductId: string,
+    note?: string,
+  ) {
+    if (fromProductId === toProductId) {
+      throw new BadRequestException('Produtos devem ser diferentes');
+    }
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: [fromProductId, toProductId] }, companyId },
+      select: { id: true },
+    });
+    if (products.length !== 2) {
+      throw new BadRequestException('Produto inválido ou fora da empresa');
+    }
     return this.prisma.productEquivalent.create({
       data: { fromProductId, toProductId, note },
     });

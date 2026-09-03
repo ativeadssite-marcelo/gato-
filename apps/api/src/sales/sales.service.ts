@@ -1,7 +1,27 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Channel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
+
+type CreateQuoteInput = {
+  userId: string;
+  companyId: string;
+  branchIds: string[];
+  branchId: string;
+  channel: Channel;
+  customer?: string;
+  items: { productId: string; qty: number; unitPrice: number }[];
+};
+
+type ConvertInput = {
+  userId: string;
+  companyId: string;
+  branchIds: string[];
+};
 
 @Injectable()
 export class SalesService {
@@ -19,13 +39,19 @@ export class SalesService {
     });
   }
 
-  async createQuote(input: {
-    userId: string;
-    branchId: string;
-    channel: Channel;
-    customer?: string;
-    items: { productId: string; qty: number; unitPrice: number }[];
-  }) {
+  async createQuote(input: CreateQuoteInput) {
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: input.branchId },
+      select: { id: true, companyId: true },
+    });
+    if (
+      !branch ||
+      branch.companyId !== input.companyId ||
+      !input.branchIds.includes(input.branchId)
+    ) {
+      throw new ForbiddenException('Sem acesso a este hub');
+    }
+
     return this.prisma.quote.create({
       data: {
         userId: input.userId,
@@ -45,41 +71,60 @@ export class SalesService {
     });
   }
 
-  async convertQuote(quoteId: string, userId: string) {
+  async convertQuote(quoteId: string, ctx: ConvertInput) {
     const quote = await this.prisma.quote.findUniqueOrThrow({
       where: { id: quoteId },
-      include: { items: true },
+      include: { items: true, branch: true },
     });
-    const order = await this.prisma.order.create({
-      data: {
-        branchId: quote.branchId,
-        userId,
-        quoteId: quote.id,
-        status: 'aberto',
-        items: {
-          create: quote.items.map((i) => ({
-            productId: i.productId,
-            qty: i.qty,
-            unitPrice: i.unitPrice,
-          })),
-        },
-      },
-      include: { items: true },
-    });
-    await this.prisma.quote.update({
-      where: { id: quote.id },
-      data: { status: 'convertida' },
-    });
-    for (const item of order.items) {
-      await this.inventory.move({
-        branchId: order.branchId,
-        productId: item.productId,
-        type: 'saida',
-        qty: Number(item.qty),
-        note: `Pedido ${order.id}`,
-        createdBy: userId,
-      });
+
+    if (
+      quote.branch.companyId !== ctx.companyId ||
+      !ctx.branchIds.includes(quote.branchId)
+    ) {
+      throw new ForbiddenException('Sem acesso a este orçamento');
     }
-    return order;
+    if (quote.status === 'convertida') {
+      throw new ConflictException('Orçamento já convertido');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.create({
+        data: {
+          branchId: quote.branchId,
+          userId: ctx.userId,
+          quoteId: quote.id,
+          status: 'aberto',
+          items: {
+            create: quote.items.map((i) => ({
+              productId: i.productId,
+              qty: i.qty,
+              unitPrice: i.unitPrice,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+
+      await tx.quote.update({
+        where: { id: quote.id },
+        data: { status: 'convertida' },
+      });
+
+      for (const item of order.items) {
+        await this.inventory.move(
+          {
+            branchId: order.branchId,
+            productId: item.productId,
+            type: 'saida',
+            qty: Number(item.qty),
+            note: `Pedido ${order.id}`,
+            createdBy: ctx.userId,
+          },
+          tx,
+        );
+      }
+
+      return order;
+    });
   }
 }

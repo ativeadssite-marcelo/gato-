@@ -60,6 +60,8 @@ export class SalesController {
   createQuote(@CurrentUser() user: RequestUser, @Body() dto: CreateQuoteDto) {
     return this.sales.createQuote({
       userId: user.id,
+      companyId: user.companyId,
+      branchIds: user.branchIds,
       ...dto,
     });
   }
@@ -67,6 +69,10 @@ export class SalesController {
   @Post('quotes/:id/convert')
   @Roles('gestor', 'vendedor', 'caixa')
   convert(@CurrentUser() user: RequestUser, @Param('id') id: string) {
-    return this.sales.convertQuote(id, user.id);
+    return this.sales.convertQuote(id, {
+      userId: user.id,
+      companyId: user.companyId,
+      branchIds: user.branchIds,
+    });
   }
 }

@@ -75,8 +75,9 @@ export class CatalogController {
 
   @Post('equivalents')
   @Roles('gestor', 'estoque')
-  equivalent(@Body() dto: EquivalentDto) {
+  equivalent(@CurrentUser() user: RequestUser, @Body() dto: EquivalentDto) {
     return this.catalog.addEquivalent(
+      user.companyId,
       dto.fromProductId,
       dto.toProductId,
       dto.note,

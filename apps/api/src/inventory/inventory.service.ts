@@ -2,6 +2,23 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, StockMoveType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
+type MoveInput = {
+  branchId: string;
+  productId: string;
+  type: StockMoveType;
+  qty: number;
+  note?: string;
+  createdBy?: string;
+};
+
+type TransferInput = {
+  fromBranchId: string;
+  toBranchId: string;
+  productId: string;
+  qty: number;
+  createdBy?: string;
+};
+
 @Injectable()
 export class InventoryService {
   constructor(private prisma: PrismaService) {}
@@ -31,19 +48,13 @@ export class InventoryService {
     });
   }
 
-  async move(input: {
-    branchId: string;
-    productId: string;
-    type: StockMoveType;
-    qty: number;
-    note?: string;
-    createdBy?: string;
-  }) {
+  async move(input: MoveInput, tx?: Prisma.TransactionClient) {
     if (input.qty <= 0) {
       throw new BadRequestException('Quantidade deve ser positiva');
     }
-    return this.prisma.$transaction(async (tx) => {
-      const balance = await tx.stockBalance.upsert({
+
+    const run = async (db: Prisma.TransactionClient) => {
+      const balance = await db.stockBalance.upsert({
         where: {
           branchId_productId: {
             branchId: input.branchId,
@@ -92,12 +103,12 @@ export class InventoryService {
         if (nextReserved.lt(0)) nextReserved = new Prisma.Decimal(0);
       }
 
-      await tx.stockBalance.update({
+      await db.stockBalance.update({
         where: { id: balance.id },
         data: { qty: nextQty, reserved: nextReserved },
       });
 
-      return tx.stockMove.create({
+      return db.stockMove.create({
         data: {
           branchId: input.branchId,
           productId: input.productId,
@@ -107,34 +118,39 @@ export class InventoryService {
           createdBy: input.createdBy,
         },
       });
-    });
+    };
+
+    return tx ? run(tx) : this.prisma.$transaction(run);
   }
 
-  async transfer(input: {
-    fromBranchId: string;
-    toBranchId: string;
-    productId: string;
-    qty: number;
-    createdBy?: string;
-  }) {
+  async transfer(input: TransferInput) {
     if (input.fromBranchId === input.toBranchId) {
       throw new BadRequestException('Hubs de origem e destino iguais');
     }
-    await this.move({
-      branchId: input.fromBranchId,
-      productId: input.productId,
-      type: 'transferencia_out',
-      qty: input.qty,
-      note: `Para ${input.toBranchId}`,
-      createdBy: input.createdBy,
-    });
-    return this.move({
-      branchId: input.toBranchId,
-      productId: input.productId,
-      type: 'transferencia_in',
-      qty: input.qty,
-      note: `De ${input.fromBranchId}`,
-      createdBy: input.createdBy,
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.move(
+        {
+          branchId: input.fromBranchId,
+          productId: input.productId,
+          type: 'transferencia_out',
+          qty: input.qty,
+          note: `Para ${input.toBranchId}`,
+          createdBy: input.createdBy,
+        },
+        tx,
+      );
+      return this.move(
+        {
+          branchId: input.toBranchId,
+          productId: input.productId,
+          type: 'transferencia_in',
+          qty: input.qty,
+          note: `De ${input.fromBranchId}`,
+          createdBy: input.createdBy,
+        },
+        tx,
+      );
     });
   }
 }
