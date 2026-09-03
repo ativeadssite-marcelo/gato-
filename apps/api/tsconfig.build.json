@@ -12,10 +12,7 @@
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
-    "strictNullChecks": true,
-    "paths": {
-      "@gato/shared": ["../../packages/shared/src/index.ts"]
-    }
+    "strictNullChecks": true
   },
   "include": ["src/**/*"]
 }

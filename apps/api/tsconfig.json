@@ -16,10 +16,7 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false,
-    "paths": {
-      "@gato/shared": ["../../packages/shared/src"]
-    }
+    "noFallthroughCasesInSwitch": false
   },
   "include": ["src/**/*", "prisma/**/*"]
 }
