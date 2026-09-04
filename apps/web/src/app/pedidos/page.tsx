@@ -6,6 +6,7 @@ import { api, getToken } from '../../lib/api';
 
 type Order = {
   id: string;
+  origin: string;
   status: string;
   createdAt: string;
   branch: { name: string };
@@ -49,7 +50,7 @@ export default function PedidosPage() {
           <div className="row">
             <strong>Pedido {o.id.slice(0, 8)}</strong>
             <span className="muted">
-              {o.branch.name} · {o.status} · {new Date(o.createdAt).toLocaleString('pt-BR')}
+              {o.branch.name} · {o.origin === 'cotacao' ? 'Cotação' : 'Balcão'} · {o.status} · {new Date(o.createdAt).toLocaleString('pt-BR')}
             </span>
             <button className="ghost" onClick={() => emit(o.id, 'nfce')}>
               Emitir NFC-e

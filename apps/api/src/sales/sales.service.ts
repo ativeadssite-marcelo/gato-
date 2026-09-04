@@ -133,6 +133,7 @@ export class SalesService {
           branchId: quote.branchId,
           userId: ctx.userId,
           quoteId: quote.id,
+          origin: 'cotacao',
           status: 'aberto',
           items: {
             create: quote.items.map((i) => ({
