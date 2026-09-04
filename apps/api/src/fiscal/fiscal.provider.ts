@@ -3,11 +3,12 @@ import { Injectable } from '@nestjs/common';
 export type FiscalEmitInput = {
   orderId: string;
   type: 'nfce' | 'nfe';
+  payload?: Record<string, unknown>;
 };
 
 export interface FiscalProvider {
   emit(input: FiscalEmitInput): Promise<{
-    providerId: string;
+    providerId?: string | null;
     status: 'enfileirado' | 'autorizado' | 'rejeitado';
     accessKey?: string;
   }>;

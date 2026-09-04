@@ -7,8 +7,14 @@ import { useEffect, useState } from 'react';
 const links = [
   { href: '/consulta', label: 'Consulta' },
   { href: '/produtos', label: 'Produtos' },
+  { href: '/categorias', label: 'Categorias' },
   { href: '/estoque', label: 'Estoque' },
   { href: '/orcamentos', label: 'Orçamentos' },
+  { href: '/pedidos', label: 'Pedidos' },
+  { href: '/nfe', label: 'NF-e' },
+  { href: '/clientes', label: 'Clientes' },
+  { href: '/veiculos', label: 'Veículos' },
+  { href: '/marketplaces', label: 'Marketplaces' },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {

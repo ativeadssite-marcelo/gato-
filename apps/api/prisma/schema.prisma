@@ -19,6 +19,10 @@ enum Role {
 enum Channel {
   balcao
   site
+  mercado_livre
+  shopee
+  amazon
+  atacado
 }
 
 enum StockMoveType {
@@ -53,36 +57,85 @@ enum FiscalStatus {
   cancelado
 }
 
+enum CustomerType {
+  consumidor
+  frotista
+  mecanica
+}
+
+enum PurchaseStatus {
+  importado
+  parcial
+  concluido
+  cancelado
+}
+
+enum PurchaseItemStatus {
+  pendente
+  correspondido
+  novo
+  ignorado
+}
+
+enum VehicleCategory {
+  moto
+  carro
+  caminhao
+  trator
+}
+
+enum ProductSegment {
+  automotivo
+  moto
+  caminhao
+  agricola
+  geral
+}
+
+enum EquivalenceType {
+  exata
+  similar
+  alternativa
+}
+
 model Company {
-  id        String   @id @default(cuid())
-  name      String
-  tradeName String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  branches  Branch[]
-  users     User[]
-  products  Product[]
-  priceLists PriceList[]
+  id               String            @id @default(cuid())
+  name             String
+  tradeName        String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  branches         Branch[]
+  users            User[]
+  products         Product[]
+  priceLists       PriceList[]
+  suppliers        Supplier[]
+  brands           Brand[]
+  customers        Customer[]
+  vehicles         Vehicle[]
+  salesChannels    SalesChannel[]
+  purchaseInvoices PurchaseInvoice[]
+  categories       Category[]
 }
 
 model Branch {
-  id        String   @id @default(cuid())
+  id        String           @id @default(cuid())
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
+  company   Company          @relation(fields: [companyId], references: [id])
   name      String
   cnpj      String
   ie        String?
   uf        String
   city      String?
-  isHub     Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isHub     Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
   users     User[]
   balances  StockBalance[]
   moves     StockMove[]
   quotes    Quote[]
   orders    Order[]
   access    UserBranchAccess[]
+  purchaseInvoices PurchaseInvoice[]
 
   @@index([companyId])
 }
@@ -117,41 +170,279 @@ model UserBranchAccess {
 }
 
 model Product {
-  id              String   @id @default(cuid())
-  companyId       String
-  company         Company  @relation(fields: [companyId], references: [id])
-  sku             String
-  name            String
-  oem             String?
-  ean             String?
-  ncm             String?
-  cest            String?
-  unit            String   @default("UN")
-  avgCost         Decimal  @default(0) @db.Decimal(14, 4)
-  markupPercent   Decimal  @default(0) @db.Decimal(8, 2)
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  equivalentsFrom ProductEquivalent[] @relation("FromProduct")
-  equivalentsTo   ProductEquivalent[] @relation("ToProduct")
-  balances        StockBalance[]
-  moves           StockMove[]
-  prices          PriceListItem[]
-  quoteItems      QuoteItem[]
-  orderItems      OrderItem[]
+  id               String              @id @default(cuid())
+  companyId        String
+  company          Company             @relation(fields: [companyId], references: [id])
+  sku              String
+  name             String
+  shortDescription String?
+  segment          ProductSegment      @default(geral)
+  oem              String?
+  ean              String?
+  ncm              String?
+  cest             String?
+  cst              String?
+  unit             String              @default("UN")
+  avgCost          Decimal             @default(0) @db.Decimal(14, 4)
+  markupPercent    Decimal             @default(0) @db.Decimal(8, 2)
+  freightCost      Decimal             @default(0) @db.Decimal(14, 2)
+  costOther        Decimal             @default(0) @db.Decimal(14, 2)
+  specs            Json?
+  techSheetUrl     String?
+  brandId          String?
+  brand            Brand?              @relation(fields: [brandId], references: [id])
+  categoryId       String?
+  category         Category?           @relation(fields: [categoryId], references: [id])
+  supplierId       String?
+  supplier         Supplier?           @relation(fields: [supplierId], references: [id])
+  supplierCode     String?
+  active           Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  equivalentsFrom  ProductEquivalent[] @relation("FromProduct")
+  equivalentsTo    ProductEquivalent[] @relation("ToProduct")
+  balances         StockBalance[]
+  moves            StockMove[]
+  prices           PriceListItem[]
+  quoteItems       QuoteItem[]
+  orderItems       OrderItem[]
+  images           ProductImage[]
+  taxes            ProductTax[]
+  applications     ProductApplication[]
+  purchaseItems    PurchaseInvoiceItem[]
+  suppliers        ProductSupplier[]
+  markups          ProductMarkup[]
 
   @@unique([companyId, sku])
+  @@index([brandId])
+  @@index([supplierId])
+  @@index([categoryId])
 }
 
 model ProductEquivalent {
-  id            String  @id @default(cuid())
+  id            String          @id @default(cuid())
   fromProductId String
-  fromProduct   Product @relation("FromProduct", fields: [fromProductId], references: [id], onDelete: Cascade)
+  fromProduct   Product         @relation("FromProduct", fields: [fromProductId], references: [id], onDelete: Cascade)
   toProductId   String
-  toProduct     Product @relation("ToProduct", fields: [toProductId], references: [id], onDelete: Cascade)
+  toProduct     Product         @relation("ToProduct", fields: [toProductId], references: [id], onDelete: Cascade)
+  compatibility EquivalenceType @default(similar)
   note          String?
 
   @@unique([fromProductId, toProductId])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  sortOrder Int     @default(0)
+
+  @@index([productId])
+}
+
+model ProductTax {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  uf          String
+  icmsRate    Decimal  @default(0) @db.Decimal(8, 2)
+  mvaPercent  Decimal  @default(0) @db.Decimal(8, 2)
+  reducaoBase Decimal  @default(0) @db.Decimal(8, 2)
+  fcpPercent  Decimal  @default(0) @db.Decimal(8, 2)
+
+  @@unique([productId, uf])
+}
+
+model ProductApplication {
+  id           String  @id @default(cuid())
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  vehicleId    String
+  vehicle      Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  engine       String?
+  transmission String?
+  traction     String?
+  hasAC        Boolean @default(false)
+  note         String?
+
+  @@index([productId])
+  @@index([vehicleId])
+}
+
+model Supplier {
+  id               String            @id @default(cuid())
+  companyId        String
+  company          Company           @relation(fields: [companyId], references: [id])
+  name             String
+  cnpj             String?
+  ie               String?
+  email            String?
+  phone            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  products         Product[]
+  purchaseInvoices PurchaseInvoice[]
+  productSuppliers ProductSupplier[]
+
+  @@unique([companyId, cnpj])
+  @@index([companyId])
+}
+
+model Brand {
+  id        String    @id @default(cuid())
+  companyId String
+  company   Company   @relation(fields: [companyId], references: [id])
+  name      String
+  createdAt DateTime  @default(now())
+  products  Product[]
+  vehicles  Vehicle[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Vehicle {
+  id           String               @id @default(cuid())
+  companyId    String
+  company      Company              @relation(fields: [companyId], references: [id])
+  brandId      String
+  brand        Brand                @relation(fields: [brandId], references: [id])
+  model        String
+  yearStart    Int
+  yearEnd      Int
+  category     VehicleCategory      @default(carro)
+  createdAt    DateTime             @default(now())
+  applications ProductApplication[]
+
+  @@index([companyId])
+  @@index([brandId])
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id])
+  name      String
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  products  Product[]
+  createdAt DateTime   @default(now())
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([parentId])
+}
+
+model ProductSupplier {
+  id           String   @id @default(cuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id])
+  code         String?
+  price        Decimal? @db.Decimal(14, 4)
+  leadTimeDays Int?
+  preferred    Boolean  @default(false)
+
+  @@unique([productId, supplierId])
+  @@index([supplierId])
+}
+
+model ProductMarkup {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  channel   Channel
+  percent   Decimal @default(0) @db.Decimal(8, 2)
+
+  @@unique([productId, channel])
+}
+
+model Customer {
+  id              String       @id @default(cuid())
+  companyId       String
+  company         Company      @relation(fields: [companyId], references: [id])
+  name            String
+  doc             String?
+  type            CustomerType @default(consumidor)
+  discountPercent Decimal      @default(0) @db.Decimal(8, 2)
+  phone           String?
+  email           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  quotes          Quote[]
+
+  @@index([companyId])
+}
+
+model SalesChannel {
+  id                String   @id @default(cuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id])
+  slug              String
+  name              String
+  commissionPercent Decimal  @default(0) @db.Decimal(8, 2)
+  fixedFee          Decimal  @default(0) @db.Decimal(14, 2)
+  shipping          Decimal  @default(0) @db.Decimal(14, 2)
+  active            Boolean  @default(true)
+  credentials       Json?
+  webhookSecret     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+}
+
+model PurchaseInvoice {
+  id         String                @id @default(cuid())
+  companyId  String
+  company    Company               @relation(fields: [companyId], references: [id])
+  branchId   String?
+  branch     Branch?               @relation(fields: [branchId], references: [id])
+  supplierId String?
+  supplier   Supplier?             @relation(fields: [supplierId], references: [id])
+  accessKey  String                @unique
+  number     String?
+  series     String?
+  model      String?
+  issuedAt   DateTime?
+  total      Decimal               @default(0) @db.Decimal(14, 2)
+  status     PurchaseStatus        @default(importado)
+  xml        String?
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+  items      PurchaseInvoiceItem[]
+
+  @@index([companyId])
+  @@index([branchId])
+  @@index([supplierId])
+}
+
+model PurchaseInvoiceItem {
+  id          String              @id @default(cuid())
+  invoiceId   String
+  invoice     PurchaseInvoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?            @relation(fields: [productId], references: [id])
+  sku         String?
+  ean         String?
+  ncm         String?
+  cest        String?
+  cst         String?
+  cfop        String?
+  description String
+  qty         Decimal             @db.Decimal(14, 3)
+  unitCost    Decimal             @db.Decimal(14, 4)
+  totalCost   Decimal             @db.Decimal(14, 2)
+  icmsBase    Decimal?            @db.Decimal(14, 2)
+  icmsRate    Decimal?            @db.Decimal(8, 2)
+  status      PurchaseItemStatus  @default(pendente)
+
+  @@index([invoiceId])
+  @@index([productId])
 }
 
 model StockBalance {
@@ -162,6 +453,8 @@ model StockBalance {
   product   Product @relation(fields: [productId], references: [id])
   qty       Decimal @default(0) @db.Decimal(14, 3)
   reserved  Decimal @default(0) @db.Decimal(14, 3)
+  pending   Decimal @default(0) @db.Decimal(14, 3)
+  location  String?
   updatedAt DateTime @updatedAt
 
   @@unique([branchId, productId])
@@ -207,17 +500,22 @@ model PriceListItem {
 }
 
 model Quote {
-  id        String      @id @default(cuid())
-  branchId  String
-  branch    Branch      @relation(fields: [branchId], references: [id])
-  userId    String
-  user      User        @relation(fields: [userId], references: [id])
-  channel   Channel     @default(balcao)
-  customer  String?
-  status    QuoteStatus @default(rascunho)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  items     QuoteItem[]
+  id              String      @id @default(cuid())
+  branchId        String
+  branch          Branch      @relation(fields: [branchId], references: [id])
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  customerId      String?
+  customer        Customer?   @relation(fields: [customerId], references: [id])
+  channel         Channel     @default(balcao)
+  customerName    String?
+  discountPercent Decimal     @default(0) @db.Decimal(8, 2)
+  status          QuoteStatus @default(rascunho)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           QuoteItem[]
+
+  @@index([customerId])
 }
 
 model QuoteItem {
@@ -275,6 +573,7 @@ model FiscalDocument {
   accessKey  String?
   providerId String?
   xmlUrl     String?
+  danfeUrl   String?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 }

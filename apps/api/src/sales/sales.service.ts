@@ -13,7 +13,9 @@ type CreateQuoteInput = {
   branchIds: string[];
   branchId: string;
   channel: Channel;
-  customer?: string;
+  customerId?: string;
+  customerName?: string;
+  discountPercent?: number;
   items: { productId: string; qty: number; unitPrice: number }[];
 };
 
@@ -33,7 +35,24 @@ export class SalesService {
   listQuotes(companyId: string, branchIds: string[]) {
     return this.prisma.quote.findMany({
       where: { branch: { companyId, id: { in: branchIds } } },
-      include: { items: { include: { product: true } }, branch: true },
+      include: {
+        items: { include: { product: true } },
+        branch: true,
+        customer: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  listOrders(companyId: string, branchIds: string[]) {
+    return this.prisma.order.findMany({
+      where: { branch: { companyId, id: { in: branchIds } } },
+      include: {
+        items: { include: { product: true } },
+        branch: true,
+        fiscal: true,
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
@@ -52,22 +71,43 @@ export class SalesService {
       throw new ForbiddenException('Sem acesso a este hub');
     }
 
+    let discountPercent = input.discountPercent ?? 0;
+    let customerName = input.customerName;
+    let customerId: string | null = input.customerId ?? null;
+
+    if (input.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: input.customerId, companyId: input.companyId },
+      });
+      if (!customer) {
+        throw new ForbiddenException('Cliente inválido ou fora da empresa');
+      }
+      customerName = customer.name;
+      if (input.discountPercent == null) {
+        discountPercent = Number(customer.discountPercent);
+      }
+    }
+
+    const factor = 1 - discountPercent / 100;
+
     return this.prisma.quote.create({
       data: {
         userId: input.userId,
         branchId: input.branchId,
         channel: input.channel,
-        customer: input.customer,
+        customerId,
+        customerName,
+        discountPercent,
         status: 'enviada',
         items: {
           create: input.items.map((i) => ({
             productId: i.productId,
             qty: i.qty,
-            unitPrice: i.unitPrice,
+            unitPrice: Number((i.unitPrice * factor).toFixed(4)),
           })),
         },
       },
-      include: { items: true },
+      include: { items: true, customer: true },
     });
   }
 

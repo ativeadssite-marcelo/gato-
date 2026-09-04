@@ -39,16 +39,21 @@ npm run dev
 
 O papel `consulta` não vê custo. Hubs seed: São Paulo e Minas Gerais.
 
-## O que já entra neste scaffold
+## O que já entra
 
 - Auth JWT e RBAC
 - Filiais/hubs
-- Produtos + equivalentes (API)
+- Produtos + equivalentes + marca + fornecedor + imagens + impostos por UF (ICMS/ST)
+- Veículos e aplicação (peça→veículo com motor/câmbio/tração/ar)
 - Estoque por hub, movimentos e transferência
-- Consulta preço/markup/margem por canal (`balcao` / `site`)
-- Orçamento → pedido (baixa estoque)
-- `FiscalProvider` stub (trocar por Nuvem Fiscal / Focus NFe depois)
+- Consulta preço/markup/margem por canal (`balcao` / `site` / `mercado_livre` / `shopee` / `amazon`)
+- Orçamento → pedido (baixa estoque) com cliente por tipo e % de desconto
+- NF-e de compra: importação de XML, casamento por código, wizard de cadastro e entrada de estoque
+- Emissão fiscal (NF-e/NFC-e) com adapter Nuvem Fiscal + stub (webhook de status)
+- Marketplaces: canais, custo/preço por canal e adapters (stubs prontos para plugar)
 
-## Fora deste scaffold
+## Fora deste escopo (ainda)
 
-NFC-e real, XML de compra, caixa/TEF, marketplaces e ads.
+- Conexão real com APIs dos marketplaces (OAuth ML / SP-API Amazon) e assinatura de webhooks
+- Mapeamento fiscal completo do Nuvem Fiscal (CFOP por estado, ICMS/ST, MDF-e)
+- Caixa/TEF e emissão de DANFE

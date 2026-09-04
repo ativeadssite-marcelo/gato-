@@ -6,7 +6,9 @@ import { api, getToken } from '../../lib/api';
 
 type Quote = {
   id: string;
-  customer?: string;
+  customerName?: string;
+  customer?: { name: string } | null;
+  discountPercent?: string;
   status: string;
   channel: string;
   branch: { name: string };
@@ -36,9 +38,10 @@ export default function OrcamentosPage() {
       {rows.map((q) => (
         <div key={q.id} className="card" style={{ marginTop: 12 }}>
           <div className="row">
-            <strong>{q.customer || 'Balcão'}</strong>
+            <strong>{q.customer?.name ?? q.customerName ?? 'Balcão'}</strong>
             <span className="muted">
               {q.branch.name} · {q.channel} · {q.status}
+              {q.discountPercent ? ` · desc ${q.discountPercent}%` : ''}
             </span>
             {q.status !== 'convertida' && (
               <button onClick={() => convert(q.id)}>Converter em pedido</button>

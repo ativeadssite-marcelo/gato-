@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Channel } from '@prisma/client';
-import { canSeeCost } from '@gato/shared';
+import { canSeeCost, CHANNEL_LABELS } from '@gato/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -31,6 +31,7 @@ export class PricingService {
       },
       include: {
         prices: { include: { priceList: true } },
+        markups: true,
         balances: {
           where: { branchId: { in: input.branchIds } },
           include: { branch: { select: { id: true, name: true, uf: true } } },
@@ -45,7 +46,10 @@ export class PricingService {
     return products.map((p) => {
       const listItem = p.prices.find((i) => i.priceList.channel === channel);
       const cost = Number(p.avgCost);
-      const markup = Number(p.markupPercent);
+      const channelMarkup = p.markups.find((m) => m.channel === channel);
+      const markup = channelMarkup
+        ? Number(channelMarkup.percent)
+        : Number(p.markupPercent);
       const computed = cost * (1 + markup / 100);
       const price = listItem ? Number(listItem.price) : computed;
       const margin = price > 0 ? ((price - cost) / price) * 100 : 0;
@@ -87,7 +91,7 @@ export class PricingService {
       create: {
         companyId: input.companyId,
         channel: input.channel,
-        name: input.channel === 'balcao' ? 'Balcão' : 'Site',
+        name: CHANNEL_LABELS[input.channel] ?? input.channel,
       },
       update: {},
     });

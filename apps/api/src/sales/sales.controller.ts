@@ -37,7 +37,16 @@ class CreateQuoteDto {
 
   @IsOptional()
   @IsString()
-  customer?: string;
+  customerId?: string;
+
+  @IsOptional()
+  @IsString()
+  customerName?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  discountPercent?: number;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -53,6 +62,11 @@ export class SalesController {
   @Get('quotes')
   quotes(@CurrentUser() user: RequestUser) {
     return this.sales.listQuotes(user.companyId, user.branchIds);
+  }
+
+  @Get('orders')
+  orders(@CurrentUser() user: RequestUser) {
+    return this.sales.listOrders(user.companyId, user.branchIds);
   }
 
   @Post('quotes')
