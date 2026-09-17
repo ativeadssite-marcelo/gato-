@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Home, 
   ChevronRight, 
@@ -36,11 +36,28 @@ import brakeRotorImg from '../assets/images/brake_rotor_part_1789396161455.jpg';
 import { Product, BranchUnit, CompanyProfile } from '../types';
 import { INITIAL_PRODUCTS, INITIAL_BRANCHES } from '../data/initialData';
 
+// Utilitários de busca automotiva resiliente (sem acentos, multi-tokens e normalização de códigos)
+export function normalizeSearchString(val: string): string {
+  if (!val) return '';
+  return val
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove diacríticos (ó->o, ã->a, ç->c, etc.)
+    .trim();
+}
+
+export function cleanCodeForSearch(val: string): string {
+  if (!val) return '';
+  return val.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 interface ConsultaPecasViewProps {
   products?: Product[];
   activeBranch?: BranchUnit;
   branches?: BranchUnit[];
   companyProfile?: CompanyProfile;
+  initialSearchQuery?: string;
+  onSearchQueryChange?: (query: string) => void;
   onAddToCart?: (part: any, qty: number) => void;
   onAddToQuote?: (part: any) => void;
   onNavigateToView?: (view: string) => void;
@@ -169,18 +186,38 @@ export const ConsultaPecasView: React.FC<ConsultaPecasViewProps> = ({
   activeBranch = INITIAL_BRANCHES[0],
   branches = INITIAL_BRANCHES,
   companyProfile,
+  initialSearchQuery = '',
+  onSearchQueryChange,
   onAddToCart,
   onAddToQuote,
   onNavigateToView,
   onShowNotification,
 }) => {
   // Filtros de busca
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>(initialSearchQuery);
   const [selectedSystem, setSelectedSystem] = useState<string>('todos');
   const [selectedBrand, setSelectedBrand] = useState<string>('todas');
   const [stockOnly, setStockOnly] = useState<boolean>(false);
   const [plateInput, setPlateInput] = useState<string>('');
   const [plateDetectedVehicle, setPlateDetectedVehicle] = useState<string | null>(null);
+
+  // Sincronização externa (ex: busca global no topo do Header)
+  useEffect(() => {
+    if (initialSearchQuery !== undefined && initialSearchQuery !== searchTerm) {
+      setSearchTerm(initialSearchQuery);
+      if (initialSearchQuery.trim().length > 0) {
+        setViewMode('catalogo');
+      }
+    }
+  }, [initialSearchQuery]);
+
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val);
+    onSearchQueryChange?.(val);
+    if (viewMode === 'detalhes' && val.trim().length > 0) {
+      setViewMode('catalogo');
+    }
+  };
 
   // Modo de exibição: 'catalogo' (lista/cards) ou 'detalhes' (ficha técnica 1:1)
   const [viewMode, setViewMode] = useState<'catalogo' | 'detalhes'>('catalogo');
@@ -299,15 +336,34 @@ export const ConsultaPecasView: React.FC<ConsultaPecasViewProps> = ({
       // Reconhecimento de placas conhecidas / simulação com frota brasileira
       if (clean.startsWith('BRA') || clean.includes('ONX') || clean.endsWith('19')) {
         setPlateDetectedVehicle('Chevrolet Onix 1.0 / 1.4 Flex (2013-2024)');
-        setSearchTerm('Onix');
-      } else if (clean.startsWith('ABC') || clean.includes('GOL')) {
+        handleSearchChange('Onix');
+      } else if (clean.startsWith('ABC') || clean.includes('GOL') || clean.endsWith('05')) {
         setPlateDetectedVehicle('Volkswagen Gol G5 / G6 1.6 Flex (2010-2018)');
-        setSearchTerm('Gol');
-      } else if (clean.includes('COR') || clean.includes('TOY')) {
+        handleSearchChange('Gol');
+      } else if (clean.includes('COR') || clean.startsWith('TOY') || clean.endsWith('20')) {
         setPlateDetectedVehicle('Toyota Corolla 2.0 Dual VVT-i (2015-2023)');
-        setSearchTerm('Corolla');
+        handleSearchChange('Corolla');
+      } else if (clean.includes('HIL') || clean.endsWith('40') || clean.startsWith('HIL')) {
+        setPlateDetectedVehicle('Toyota Hilux 2.8 Diesel 4x4 (2016-2024)');
+        handleSearchChange('Hilux');
+      } else if (clean.includes('STR') || clean.startsWith('FIA') || clean.endsWith('22')) {
+        setPlateDetectedVehicle('Fiat Strada 1.3 Firefly Flex (2020-2024)');
+        handleSearchChange('Strada');
+      } else if (clean.includes('SCA') || clean.endsWith('45')) {
+        setPlateDetectedVehicle('Scania R450 6x2 Linha Pesada Euro 5/6');
+        handleSearchChange('Scania');
       } else {
-        setPlateDetectedVehicle('Veículo Decodificado: Linha Leve / Passeio Flex');
+        const hash = clean.charCodeAt(0) + clean.charCodeAt(3) + clean.charCodeAt(6);
+        const sampleVehicles = [
+          { name: 'Chevrolet Onix 1.0 Flex', search: 'Onix' },
+          { name: 'Volkswagen Gol 1.6 Flex', search: 'Gol' },
+          { name: 'Toyota Corolla 2.0 VVT-i', search: 'Corolla' },
+          { name: 'Toyota Hilux 2.8 D-4D Diesel', search: 'Hilux' },
+          { name: 'Fiat Strada 1.3 Firefly', search: 'Strada' },
+        ];
+        const picked = sampleVehicles[hash % sampleVehicles.length];
+        setPlateDetectedVehicle(`${picked.name} (Placa ${clean})`);
+        handleSearchChange(picked.search);
       }
       onShowNotification?.('Placa Identificada', `Filtro aplicado para o veículo correspondente à placa ${clean}`, 'info');
     } else {
@@ -318,47 +374,94 @@ export const ConsultaPecasView: React.FC<ConsultaPecasViewProps> = ({
   const handleClearPlate = () => {
     setPlateInput('');
     setPlateDetectedVehicle(null);
-    setSearchTerm('');
+    handleSearchChange('');
   };
 
-  // Filtragem dos produtos
+  // Filtragem ultra-robusta e inteligente dos produtos
   const filteredParts = useMemo(() => {
     return allCatalogParts.filter((item) => {
-      // Filtro de texto
+      // 1. Filtro de busca por texto, código do fabricante, OEM, código de barras e aplicações
       if (searchTerm.trim()) {
-        const term = searchTerm.toLowerCase().trim();
-        const matchName = item.name.toLowerCase().includes(term);
-        const matchCode = item.brandCode.toLowerCase().includes(term);
-        const matchOem = item.oemCode.toLowerCase().includes(term);
-        const matchBrand = item.brand.toLowerCase().includes(term);
-        const matchApp = item.application.toLowerCase().includes(term);
-        const matchSimilars = item.similarCodes.some(s => s.toLowerCase().includes(term));
-        const matchBarcode = item.barcode ? item.barcode.includes(term) : false;
+        const normalizedQuery = normalizeSearchString(searchTerm);
+        const cleanQueryCode = cleanCodeForSearch(searchTerm);
 
-        if (!matchName && !matchCode && !matchOem && !matchBrand && !matchApp && !matchSimilars && !matchBarcode) {
-          return false;
+        // Substrings ou códigos exatos limpos
+        const cleanBrandCode = cleanCodeForSearch(item.brandCode);
+        const cleanOemCode = cleanCodeForSearch(item.oemCode);
+        const cleanBarcode = cleanCodeForSearch(item.barcode || '');
+        const cleanSimilars = item.similarCodes.map(s => cleanCodeForSearch(s));
+
+        // Se o usuário digitou um código com 3+ caracteres alfanuméricos e bate direto em algum código:
+        const matchesCodeDirectly = cleanQueryCode.length >= 3 && (
+          cleanBrandCode.includes(cleanQueryCode) ||
+          cleanOemCode.includes(cleanQueryCode) ||
+          cleanBarcode.includes(cleanQueryCode) ||
+          cleanSimilars.some(s => s.includes(cleanQueryCode))
+        );
+
+        if (!matchesCodeDirectly) {
+          // Busca inteligente por múltiplos tokens independentes (sem acentos)
+          const tokens = normalizedQuery.split(/[\s,./\-]+/).filter(t => t.length > 0);
+
+          const appsText = item.applications.map(a => `${a.veiculo} ${a.ano} ${a.motor} ${a.versao} ${a.tracao || ''}`).join(' ');
+          const equivalentsText = item.equivalentParts.map(eq => `${eq.brand} ${eq.code} ${eq.subCode}`).join(' ');
+          const similarsText = item.similarCodes.join(' ');
+          const specsText = `${item.specs.fabricante} ${item.specs.oem} ${item.specs.ncm} ${item.specs.marca || ''} ${item.specs.diametro || ''}`;
+
+          const corpusNormalized = normalizeSearchString(`
+            ${item.name} 
+            ${item.brand} 
+            ${item.brandCode} 
+            ${item.oemCode} 
+            ${similarsText} 
+            ${item.barcode || ''} 
+            ${item.application} 
+            ${item.system} 
+            ${item.position} 
+            ${item.category || ''} 
+            ${appsText} 
+            ${equivalentsText} 
+            ${specsText}
+          `);
+
+          // Todos os termos digitados devem estar presentes na ficha da peça ou em códigos limpos
+          const allTokensMatch = tokens.every(token => {
+            if (corpusNormalized.includes(token)) return true;
+            const cleanToken = cleanCodeForSearch(token);
+            if (cleanToken.length >= 2) {
+              if (cleanBrandCode.includes(cleanToken) || cleanOemCode.includes(cleanToken) || cleanSimilars.some(s => s.includes(cleanToken))) {
+                return true;
+              }
+            }
+            return false;
+          });
+
+          if (!allTokensMatch) {
+            return false;
+          }
         }
       }
 
-      // Filtro de sistema
+      // 2. Filtro de sistema
       if (selectedSystem !== 'todos') {
-        const itemSys = item.system.toLowerCase();
-        if (selectedSystem === 'freio' && !itemSys.includes('freio')) return false;
-        if (selectedSystem === 'suspensao' && !itemSys.includes('suspens')) return false;
-        if (selectedSystem === 'filtros' && !itemSys.includes('filtro')) return false;
-        if (selectedSystem === 'motor' && !itemSys.includes('motor') && !itemSys.includes('filtro')) return false;
-        if (selectedSystem === 'eletrica' && !itemSys.includes('elétric') && !itemSys.includes('eletric')) return false;
-        if (selectedSystem === 'transmissao' && !itemSys.includes('transmiss') && !itemSys.includes('embreag')) return false;
+        const itemSys = normalizeSearchString(item.system);
+        const itemName = normalizeSearchString(item.name);
+        if (selectedSystem === 'freio' && !itemSys.includes('freio') && !itemName.includes('freio') && !itemName.includes('disco') && !itemName.includes('pastilha') && !itemName.includes('lona')) return false;
+        if (selectedSystem === 'suspensao' && !itemSys.includes('suspens') && !itemName.includes('amortecedor') && !itemName.includes('mola') && !itemName.includes('suspens') && !itemName.includes('pivo')) return false;
+        if (selectedSystem === 'filtros' && !itemSys.includes('filtro') && !itemName.includes('filtro') && !itemName.includes('oleo') && !itemName.includes('combustivel')) return false;
+        if (selectedSystem === 'motor' && !itemSys.includes('motor') && !itemName.includes('motor') && !itemName.includes('vela') && !itemName.includes('bobina') && !itemName.includes('retentor') && !itemName.includes('valvula')) return false;
+        if (selectedSystem === 'eletrica' && !itemSys.includes('eletric') && !itemName.includes('eletric') && !itemName.includes('vela') && !itemName.includes('bobina')) return false;
+        if (selectedSystem === 'transmissao' && !itemSys.includes('transmiss') && !itemSys.includes('embreag') && !itemName.includes('embreag') && !itemName.includes('transmiss') && !itemName.includes('retentor')) return false;
       }
 
-      // Filtro de marca
+      // 3. Filtro de marca
       if (selectedBrand !== 'todas') {
         if (item.brand.toLowerCase() !== selectedBrand.toLowerCase()) {
           return false;
         }
       }
 
-      // Filtro de estoque
+      // 4. Filtro de estoque
       if (stockOnly && item.stock <= 0) {
         return false;
       }
@@ -521,183 +624,247 @@ export const ConsultaPecasView: React.FC<ConsultaPecasViewProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* VISTA 1: CATÁLOGO GERAL & BUSCADOR INTELIGENTE MULTICRITÉRIO */}
+      {/* BARRA DE BUSCA INTELIGENTE & FILTROS MULTICRITÉRIO (SEMPRE ACESSÍVEL) */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4" id="secao-busca-pecas">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+          
+          {/* Campo Principal de Busca por Código / Descrição */}
+          <div className="md:col-span-8">
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Busca Inteligente por Peça, Código ou Aplicação</span>
+              {searchTerm && (
+                <span className="text-[11px] font-semibold text-[#EA580C]">
+                  {filteredParts.length} peça{filteredParts.length === 1 ? '' : 's'} encontrada{filteredParts.length === 1 ? '' : 's'}
+                </span>
+              )}
+            </label>
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+              <input
+                type="text"
+                id="search-parts-input"
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Ex: 0986479265, 13502073, GP30123, disco de freio, Onix, Gol, pastilha..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#EA580C] focus:bg-white focus:ring-2 focus:ring-[#EA580C]/15 transition"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => handleSearchChange('')}
+                  className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  title="Limpar busca"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Tags de Atalhos Rápidos para Pesquisa Direta */}
+            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Sugestões:</span>
+              {[
+                { label: 'Discos de Freio', query: 'disco' },
+                { label: 'Pastilhas', query: 'pastilha' },
+                { label: 'Amortecedores', query: 'amortecedor' },
+                { label: 'Filtro de Óleo', query: 'filtro oleo' },
+                { label: 'Velas Ignição', query: 'vela' },
+                { label: 'Onix', query: 'Onix' },
+                { label: 'Gol G5', query: 'Gol' },
+                { label: 'Corolla', query: 'Corolla' },
+                { label: 'Hilux', query: 'Hilux' },
+                { label: 'Scania R450', query: 'Scania' },
+                { label: 'Cofap GP30123', query: 'GP30123' },
+                { label: 'Bosch 0986', query: '0986' },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => handleSearchChange(item.query)}
+                  className={`text-[11px] px-2.5 py-0.5 rounded-full border transition cursor-pointer ${
+                    normalizeSearchString(searchTerm) === normalizeSearchString(item.query)
+                      ? 'bg-orange-100 border-[#EA580C] text-[#EA580C] font-bold'
+                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-600 font-medium'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Campo de Busca Rápida por Placa */}
+          <div className="md:col-span-4">
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Pesquisa por Placa</span>
+              <span className="text-[10px] text-[#EA580C] font-semibold">Mercosul / Antiga</span>
+            </label>
+            <div className="relative flex items-center">
+              <div className="absolute left-2.5 w-5 h-3.5 bg-blue-700 rounded-2xs flex items-center justify-center text-[7px] font-bold text-white tracking-widest pointer-events-none">
+                BR
+              </div>
+              <input
+                type="text"
+                id="search-plate-input"
+                value={plateInput}
+                onChange={(e) => handlePlateChange(e.target.value)}
+                placeholder="BRA2E19 ou ABC1234"
+                maxLength={8}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-9 py-2.5 text-xs sm:text-sm font-mono font-bold text-slate-800 uppercase placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:border-[#EA580C] focus:bg-white focus:ring-2 focus:ring-[#EA580C]/15 transition"
+              />
+              {plateInput && (
+                <button
+                  type="button"
+                  onClick={handleClearPlate}
+                  className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  title="Limpar placa"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Digite 7 caracteres para cruzar a frota brasileira e filtrar peças compatíveis.
+            </p>
+          </div>
+        </div>
+
+        {/* Aviso de Placa Decodificada */}
+        {plateDetectedVehicle && (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-orange-900">
+              <Car className="w-4 h-4 text-[#EA580C] shrink-0" />
+              <span><strong>Veículo Reconhecido pela Placa {plateInput}:</strong> {plateDetectedVehicle}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearPlate}
+              className="text-orange-700 hover:text-orange-900 font-bold underline cursor-pointer"
+            >
+              Limpar Placa
+            </button>
+          </div>
+        )}
+
+        {/* Filtros em Linha: Sistemas, Marcas, Estoque e Layout */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
+          
+          {/* Pills de Sistema */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: 'todos', label: 'Todos os Sistemas' },
+              { id: 'freio', label: 'Freios' },
+              { id: 'suspensao', label: 'Suspensão' },
+              { id: 'motor', label: 'Motor' },
+              { id: 'filtros', label: 'Filtros' },
+              { id: 'eletrica', label: 'Elétrica' },
+              { id: 'transmissao', label: 'Transmissão' },
+            ].map((sys) => (
+              <button
+                key={sys.id}
+                type="button"
+                onClick={() => setSelectedSystem(sys.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  selectedSystem === sys.id
+                    ? 'bg-slate-900 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {sys.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filtros Auxiliares (Marcas, Apenas em Estoque, Reset e Layout) */}
+          <div className="flex items-center gap-2.5">
+            {/* Select de Marcas */}
+            <select
+              value={selectedBrand}
+              onChange={(e) => setSelectedBrand(e.target.value)}
+              className="bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#EA580C]"
+            >
+              <option value="todas">Todas as Marcas</option>
+              {availableBrands.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+
+            {/* Checkbox Apenas em Estoque */}
+            <label className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer select-none bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg">
+              <input
+                type="checkbox"
+                checked={stockOnly}
+                onChange={(e) => setStockOnly(e.target.checked)}
+                className="accent-[#EA580C] rounded"
+              />
+              <span>Com Estoque</span>
+            </label>
+
+            {/* Reset Filters */}
+            {(searchTerm || selectedSystem !== 'todos' || selectedBrand !== 'todas' || stockOnly || plateInput) && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-xs text-slate-500 hover:text-[#EA580C] font-semibold flex items-center gap-1 p-1 cursor-pointer"
+                title="Limpar todos os filtros"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Limpar</span>
+              </button>
+            )}
+
+            {/* Toggle Grade / Tabela */}
+            <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setViewLayout('grid')}
+                className={`p-1.5 transition cursor-pointer ${
+                  viewLayout === 'grid' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-400 hover:text-slate-600'
+                }`}
+                title="Visualização em Grade"
+              >
+                <Grid className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewLayout('table')}
+                className={`p-1.5 transition cursor-pointer ${
+                  viewLayout === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-400 hover:text-slate-600'
+                }`}
+                title="Visualização em Tabela"
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Barra de Status de Busca Ativa */}
+        {searchTerm && (
+          <div className="flex items-center justify-between bg-orange-50/70 border border-orange-200/80 rounded-xl px-3.5 py-2 text-xs">
+            <div className="flex items-center gap-2 text-slate-800">
+              <Search className="w-3.5 h-3.5 text-[#EA580C]" />
+              <span>
+                Filtrando por: <strong className="text-[#EA580C]">"{searchTerm}"</strong> — <strong className="text-slate-900">{filteredParts.length}</strong> peça{filteredParts.length === 1 ? '' : 's'} localizada{filteredParts.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSearchChange('')}
+              className="text-[#EA580C] hover:text-[#D94606] font-bold text-xs underline cursor-pointer"
+            >
+              Remover filtro
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* VISTA 1: CATÁLOGO GERAL */}
       {/* ========================================================================= */}
       {viewMode === 'catalogo' && (
         <div className="space-y-6">
-          
-          {/* Card de Busca e Filtros */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-              
-              {/* Campo Principal de Busca por Código / Descrição */}
-              <div className="md:col-span-8">
-                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  Busca Inteligente por Peça, Código ou Aplicação
-                </label>
-                <div className="relative flex items-center">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
-                  <input
-                    type="text"
-                    id="search-parts-input"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Ex: 0986479265, 13502073, GP30123, disco de freio, Onix, Gol, pastilha..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#EA580C] focus:bg-white focus:ring-2 focus:ring-[#EA580C]/15 transition"
-                  />
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchTerm('')}
-                      className="absolute right-3 text-slate-400 hover:text-slate-600 p-1"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Campo de Busca Rápida por Placa */}
-              <div className="md:col-span-4">
-                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Pesquisa por Placa</span>
-                  <span className="text-[10px] text-[#EA580C] font-semibold">Mercosul / Antiga</span>
-                </label>
-                <div className="relative flex items-center">
-                  <div className="absolute left-2.5 w-5 h-3.5 bg-blue-700 rounded-2xs flex items-center justify-center text-[7px] font-bold text-white tracking-widest pointer-events-none">
-                    BR
-                  </div>
-                  <input
-                    type="text"
-                    id="search-plate-input"
-                    value={plateInput}
-                    onChange={(e) => handlePlateChange(e.target.value)}
-                    placeholder="BRA2E19 ou ABC1234"
-                    maxLength={8}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-9 py-2.5 text-xs sm:text-sm font-mono font-bold text-slate-800 uppercase placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:border-[#EA580C] focus:bg-white focus:ring-2 focus:ring-[#EA580C]/15 transition"
-                  />
-                  {plateInput && (
-                    <button
-                      type="button"
-                      onClick={handleClearPlate}
-                      className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Aviso de Placa Decodificada */}
-            {plateDetectedVehicle && (
-              <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2 text-orange-900">
-                  <Car className="w-4 h-4 text-[#EA580C] shrink-0" />
-                  <span><strong>Veículo Reconhecido:</strong> {plateDetectedVehicle}</span>
-                </div>
-                <button
-                  onClick={handleClearPlate}
-                  className="text-orange-700 hover:text-orange-900 font-bold underline cursor-pointer"
-                >
-                  Limpar Placa
-                </button>
-              </div>
-            )}
-
-            {/* Filtros em Linha: Sistemas, Marcas, Estoque e Layout */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
-              
-              {/* Pills de Sistema */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { id: 'todos', label: 'Todos os Sistemas' },
-                  { id: 'freio', label: 'Freios' },
-                  { id: 'suspensao', label: 'Suspensão' },
-                  { id: 'motor', label: 'Motor' },
-                  { id: 'filtros', label: 'Filtros' },
-                  { id: 'eletrica', label: 'Elétrica' },
-                  { id: 'transmissao', label: 'Transmissão' },
-                ].map((sys) => (
-                  <button
-                    key={sys.id}
-                    type="button"
-                    onClick={() => setSelectedSystem(sys.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                      selectedSystem === sys.id
-                        ? 'bg-slate-900 text-white shadow-2xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {sys.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Filtros Auxiliares (Marcas, Apenas em Estoque, Reset e Layout) */}
-              <div className="flex items-center gap-2.5">
-                {/* Select de Marcas */}
-                <select
-                  value={selectedBrand}
-                  onChange={(e) => setSelectedBrand(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#EA580C]"
-                >
-                  <option value="todas">Todas as Marcas</option>
-                  {availableBrands.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
-
-                {/* Checkbox Apenas em Estoque */}
-                <label className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer select-none bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg">
-                  <input
-                    type="checkbox"
-                    checked={stockOnly}
-                    onChange={(e) => setStockOnly(e.target.checked)}
-                    className="accent-[#EA580C] rounded"
-                  />
-                  <span>Com Estoque</span>
-                </label>
-
-                {/* Reset Filters */}
-                {(searchTerm || selectedSystem !== 'todos' || selectedBrand !== 'todas' || stockOnly || plateInput) && (
-                  <button
-                    type="button"
-                    onClick={handleResetFilters}
-                    className="text-xs text-slate-500 hover:text-[#EA580C] font-semibold flex items-center gap-1 p-1 cursor-pointer"
-                    title="Limpar todos os filtros"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Limpar</span>
-                  </button>
-                )}
-
-                {/* Toggle Grade / Tabela */}
-                <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
-                  <button
-                    type="button"
-                    onClick={() => setViewLayout('grid')}
-                    className={`p-1.5 transition cursor-pointer ${
-                      viewLayout === 'grid' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                    title="Visualização em Grade"
-                  >
-                    <Grid className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewLayout('table')}
-                    className={`p-1.5 transition cursor-pointer ${
-                      viewLayout === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                    title="Visualização em Tabela"
-                  >
-                    <List className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Grid de Resultados */}
           {filteredParts.length === 0 ? (

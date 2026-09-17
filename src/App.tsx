@@ -177,6 +177,7 @@ export default function App() {
   const [selectedVehicleForQuote, setSelectedVehicleForQuote] = useState<VehicleFleetItem | null>(null);
   const [selectedProductForQuote, setSelectedProductForQuote] = useState<Product | null>(null);
   const [lastIssuedInvoiceId, setLastIssuedInvoiceId] = useState<string | null>(null);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>(() => {
     try {
       const saved = localStorage.getItem('gato_service_orders');
@@ -588,6 +589,12 @@ export default function App() {
         onOpenLogin={() => setCurrentView('login')}
         onOpenTrocaFilial={() => setIsTrocaFilialOpen(true)}
         onLogout={handleLogout}
+        globalSearchQuery={globalSearchQuery}
+        onSearchChange={setGlobalSearchQuery}
+        onSearchSubmit={(q) => {
+          setGlobalSearchQuery(q);
+          setCurrentView('consulta-pecas');
+        }}
       />
 
       {/* Body Area with Sidebar + Content */}
@@ -617,6 +624,8 @@ export default function App() {
               activeBranch={activeBranch}
               branches={branches}
               companyProfile={companyProfile}
+              initialSearchQuery={globalSearchQuery}
+              onSearchQueryChange={setGlobalSearchQuery}
               onAddToCart={(part, qty) => {
                 showNotification('Adicionado ao Carrinho', `${qty}x ${part.name} adicionado com sucesso!`, 'success');
               }}

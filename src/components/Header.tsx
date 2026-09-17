@@ -19,7 +19,8 @@ import {
   MapPin,
   Maximize2,
   Minimize2,
-  ShoppingCart
+  ShoppingCart,
+  X
 } from 'lucide-react';
 import { GatoBrand } from './GatoBrand';
 import { PushNotification, UserSession, CompanyProfile } from '../types';
@@ -39,6 +40,9 @@ interface HeaderProps {
   onOpenLogin: () => void;
   onOpenTrocaFilial: () => void;
   onLogout: () => void;
+  globalSearchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  onSearchSubmit?: (query: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -54,7 +58,21 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenLogin,
   onOpenTrocaFilial,
   onLogout,
+  globalSearchQuery = '',
+  onSearchChange,
+  onSearchSubmit,
 }) => {
+  const [localSearch, setLocalSearch] = useState(globalSearchQuery);
+
+  useEffect(() => {
+    setLocalSearch(globalSearchQuery);
+  }, [globalSearchQuery]);
+
+  const handleExecuteSearch = (val: string) => {
+    onSearchChange?.(val);
+    onSearchSubmit?.(val);
+    onNavigate('consulta-pecas');
+  };
   const [showNotifs, setShowNotifs] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -163,22 +181,42 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Center: Search Bar matching screenshot */}
         <div className="flex-1 max-w-2xl mx-4">
-          <div className="flex items-center bg-white px-3.5 py-2 rounded-xl w-full border border-slate-200 focus-within:border-[#EA580C] focus-within:ring-2 focus-within:ring-[#EA580C]/15 transition-all">
+          <div className="flex items-center bg-white px-3.5 py-2 rounded-xl w-full border border-slate-200 focus-within:border-[#EA580C] focus-within:ring-2 focus-within:ring-[#EA580C]/15 transition-all shadow-2xs">
             <input
               type="text"
               id="global-part-search"
-              placeholder="Buscar por código, descrição, veículo ou aplicação..."
+              value={localSearch}
+              onChange={(e) => {
+                setLocalSearch(e.target.value);
+                onSearchChange?.(e.target.value);
+              }}
+              placeholder="Buscar por código (ex: GP30123, 0986), nome, veículo ou placa..."
               className="bg-transparent text-xs sm:text-sm w-full outline-none placeholder:text-slate-400 text-slate-800"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  onNavigate('consulta-pecas');
+                  handleExecuteSearch(localSearch);
                 }
               }}
             />
+            {localSearch && (
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalSearch('');
+                  onSearchChange?.('');
+                  onSearchSubmit?.('');
+                }}
+                className="text-slate-400 hover:text-slate-600 mr-1 p-0.5"
+                title="Limpar busca"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button 
               type="button"
-              onClick={() => onNavigate('consulta-pecas')}
-              className="text-slate-400 hover:text-[#EA580C] transition ml-2 shrink-0 cursor-pointer"
+              onClick={() => handleExecuteSearch(localSearch)}
+              className="text-slate-400 hover:text-[#EA580C] transition ml-1 shrink-0 cursor-pointer"
+              title="Pesquisar peças"
             >
               <Search className="w-4 h-4" />
             </button>
