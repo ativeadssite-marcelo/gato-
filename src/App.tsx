@@ -613,49 +613,56 @@ export default function App() {
         <main className="flex-1 min-w-0 pb-12">
           {currentView === 'consulta-pecas' && (
             <ConsultaPecasView
+              products={products}
+              activeBranch={activeBranch}
+              branches={branches}
+              companyProfile={companyProfile}
               onAddToCart={(part, qty) => {
                 showNotification('Adicionado ao Carrinho', `${qty}x ${part.name} adicionado com sucesso!`, 'success');
               }}
               onAddToQuote={(part) => {
-                setSelectedProductForQuote({
-                  id: `p-consulta-${Date.now()}`,
-                  code: part.brandCode,
-                  barcode: '7891234567890',
-                  oemCode: part.oemCode,
-                  similarCodes: ['DF4205', 'PD/3123'],
-                  name: part.name,
-                  brand: part.brand,
-                  category: 'auto',
-                  supplier: 'Distribuidora Bosch do Brasil',
-                  location: {
-                    corridor: 'A',
-                    shelf: '12',
-                    box: '04',
-                  },
-                  stock: part.stock,
-                  minStock: 2,
-                  unitCost: 180,
-                  transportCost: 10,
-                  markupPercent: 61,
-                  sellingPrice: part.price,
-                  ncm: part.specs?.ncm || '8708.30.90',
-                  cst: '00',
-                  cfop: '5102',
-                  taxBaseIcms: part.price,
-                  applications: [
-                    {
-                      id: 'app-onix',
-                      brand: 'Chevrolet',
-                      vehicle: 'Onix',
-                      yearRange: '2013-2024',
-                      engine: '1.0 / 1.4',
+                const foundExistingProduct = products.find(p => p.id === part.id || p.code === part.brandCode || p.code === part.code);
+                if (foundExistingProduct) {
+                  setSelectedProductForQuote(foundExistingProduct);
+                } else {
+                  setSelectedProductForQuote({
+                    id: part.id || `p-consulta-${Date.now()}`,
+                    code: part.brandCode || part.code || '0986479265',
+                    barcode: part.barcode || '7891234567890',
+                    oemCode: part.oemCode || '13502073',
+                    similarCodes: part.similarCodes || ['DF4205', 'PD/3123'],
+                    name: part.name,
+                    brand: part.brand,
+                    category: 'auto',
+                    supplier: part.brand ? `Distribuidora ${part.brand}` : 'Distribuidora Oficial',
+                    location: {
+                      corridor: 'A',
+                      shelf: '12',
+                      box: '04',
+                    },
+                    stock: part.stock || 5,
+                    minStock: 2,
+                    unitCost: (part.price || 289.90) * 0.6,
+                    transportCost: 10,
+                    markupPercent: 60,
+                    sellingPrice: part.price || 289.90,
+                    ncm: part.specs?.ncm || '8708.30.90',
+                    cst: '00',
+                    cfop: '5102',
+                    taxBaseIcms: part.price || 289.90,
+                    applications: (part.applications || []).map((app: any, idx: number) => ({
+                      id: `app-${idx}`,
+                      brand: part.brand || 'Geral',
+                      vehicle: app.veiculo || 'Universal',
+                      yearRange: app.ano || 'Todos',
+                      engine: app.motor || 'Geral',
                       transmission: 'Manual',
                       traction: '4x2',
                       airConditioning: true,
-                    }
-                  ],
-                  updatedAt: new Date().toISOString(),
-                });
+                    })),
+                    updatedAt: new Date().toISOString(),
+                  });
+                }
                 setCurrentView('cotacao');
               }}
               onNavigateToView={(view) => setCurrentView(view)}

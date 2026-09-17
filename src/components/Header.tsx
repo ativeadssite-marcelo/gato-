@@ -171,13 +171,13 @@ export const Header: React.FC<HeaderProps> = ({
               className="bg-transparent text-xs sm:text-sm w-full outline-none placeholder:text-slate-400 text-slate-800"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  onNavigate('consulta-aplicacao');
+                  onNavigate('consulta-pecas');
                 }
               }}
             />
             <button 
               type="button"
-              onClick={() => onNavigate('consulta-aplicacao')}
+              onClick={() => onNavigate('consulta-pecas')}
               className="text-slate-400 hover:text-[#EA580C] transition ml-2 shrink-0 cursor-pointer"
             >
               <Search className="w-4 h-4" />

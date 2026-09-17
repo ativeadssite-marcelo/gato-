@@ -93,10 +93,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       aliases: ['dashboard', 'home', 'inicio'],
     },
     {
-      id: 'consulta-aplicacao',
+      id: 'consulta-pecas',
       label: 'Consulta de Peças',
       icon: Search,
-      aliases: ['consulta-aplicacao', 'consulta-pecas'],
+      aliases: ['consulta-pecas', 'consulta-aplicacao'],
     },
     {
       id: 'frota',
