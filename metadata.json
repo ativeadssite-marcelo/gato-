@@ -1,0 +1,6 @@
+{
+  "name": "GATO - Gestão de Estoque e Balcão",
+  "description": "SaaS para gestão de balcão, estoque, baixa de NF-e por XML, ordens de serviço (OS) automotiva e mecânica, precificação por estado, cotações, banco da frota veicular nacional (1995 a 2027) e consulta de aplicação de peças para autopeças, motos, caminhões e linha agrícola.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,9 +1,8 @@
-node_modules
-dist
-.next
-.env
-.env.local
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
 *.log
-coverage
-.turbo
-apps/api/generated
+.env*
+!.env.example
