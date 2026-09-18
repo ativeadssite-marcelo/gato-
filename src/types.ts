@@ -233,18 +233,43 @@ export interface QuoteItem {
   locationStr: string;
 }
 
+export interface CustomerVehicle {
+  id: string;
+  plate: string;
+  model: string;
+  brand?: string;
+  year?: string;
+  engine?: string;
+  renavam?: string;
+  notes?: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
+  fantasyName?: string;
   type: CustomerType;
   document: string; // CPF or CNPJ
+  ie?: string; // Inscrição Estadual
+  rg?: string;
   phone: string;
+  whatsapp?: string;
   email: string;
+  cep?: string;
+  address?: string;
+  number?: string;
+  neighborhood?: string;
+  complement?: string;
   city: string;
   uf: string;
   discountRate: number; // ex: 0% Consumidor, 8% Fiel, 15% Mecanica, 22% Frotista
-  address?: string;
   creditLimit?: number;
+  creditUsed?: number;
+  paymentTerm?: string;
+  contactPerson?: string;
+  notes?: string;
+  status?: 'ativo' | 'inativo' | 'bloqueado';
+  vehicles?: CustomerVehicle[];
   createdAt?: string;
 }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DashboardOverview } from './components/DashboardOverview';
@@ -163,7 +163,25 @@ export default function App() {
 
   // Entities State
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const saved = localStorage.getItem('gato_customers');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar clientes do localStorage', e);
+    }
+    return INITIAL_CUSTOMERS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gato_customers', JSON.stringify(customers));
+    } catch (e) {
+      console.warn('Erro ao salvar clientes no localStorage', e);
+    }
+  }, [customers]);
   const [marketplaces, setMarketplaces] = useState<MarketplaceSetting[]>(INITIAL_MARKETPLACES);
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>(INITIAL_INVOICES);
@@ -855,8 +873,9 @@ export default function App() {
             />
           )}
 
-          {currentView === 'clientes-orcamentos' && (
+          {(currentView === 'clientes-orcamentos' || currentView === 'clientes') && (
             <ClientesOrcamentos
+              initialTab={currentView === 'clientes' ? 'clientes' : 'orcamentos'}
               customers={customers}
               quotes={quotes}
               products={products}
