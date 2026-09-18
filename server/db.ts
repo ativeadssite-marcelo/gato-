@@ -92,29 +92,42 @@ export async function checkDatabaseConnection(): Promise<DbStatusResult> {
       }
     }
 
+    // Sanitize version to avoid leaking kernel, architecture and compiler details
+    const rawVersion = result.rows[0]?.pg_version || "PostgreSQL 17.6";
+    const versionMatch = rawVersion.match(/PostgreSQL\s+([\d.]+)/i);
+    const cleanVersion = versionMatch ? `PostgreSQL ${versionMatch[1]} (Supabase)` : "PostgreSQL (Supabase Managed)";
+
+    // Mask host and project reference to prevent reconnaissance
+    const maskedHost = host.replace(/^([^.]+)\.([^.]+)\.(.+)$/, "$1.***.$3");
+
     return {
       connected: true,
       projectRef,
-      host,
-      database,
-      version: result.rows[0]?.pg_version || "PostgreSQL 17.6",
+      host: maskedHost,
+      database: "postgres",
+      version: cleanVersion,
       currentTime: result.rows[0]?.current_time || new Date().toISOString(),
       latencyMs,
       tables,
       counts,
     };
   } catch (error: any) {
+    // Prevent credential leaks in connection error messages
+    const safeError = (error?.message || "")
+      .replace(/:[^:@]+@/, ":****@") // Redact any embedded password in URLs
+      .replace(/password\s*=\s*['"]?[^'"\s]+['"]?/gi, "password=****");
+
     return {
       connected: false,
       projectRef,
-      host,
-      database,
+      host: "db.***.supabase.co",
+      database: "postgres",
       version: "Unknown",
       currentTime: new Date().toISOString(),
       latencyMs: Date.now() - start,
       tables: [],
       counts: {},
-      error: error.message || "Failed to connect to Supabase PostgreSQL",
+      error: safeError || "Falha segura na conexão com o banco de dados",
     };
   }
 }

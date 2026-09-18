@@ -20,7 +20,109 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "20mb" }));
+// Security: Disable express fingerprinting banner
+app.disable("x-powered-by");
+
+// Security: HTTP Hardening Headers (OWASP recommendations)
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
+
+// JSON body parser with size guard
+app.use(express.json({ limit: "15mb" }));
+
+// Security: JSON Syntax Error & Malformed Payload Trap (prevents stack trace disclosure)
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && "body" in err) {
+    return res.status(400).json({
+      success: false,
+      error: "Corpo da requisição JSON inválido ou malformado.",
+    });
+  }
+  if (err instanceof URIError) {
+    return res.status(400).json({
+      success: false,
+      error: "Parâmetro de URL com codificação inválida.",
+    });
+  }
+  next(err);
+});
+
+// Security: In-Memory Sliding-Window Rate Limiter (Brute-force and DoS Defense)
+interface RateLimitRecord {
+  count: number;
+  resetAt: number;
+}
+const rateLimits = new Map<string, RateLimitRecord>();
+
+function createRateLimiter(maxRequests: number, windowMs: number, keyPrefix = "std") {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "127.0.0.1";
+    const key = `${keyPrefix}:${ip}`;
+    const now = Date.now();
+
+    let record = rateLimits.get(key);
+    if (!record || now > record.resetAt) {
+      record = { count: 1, resetAt: now + windowMs };
+      rateLimits.set(key, record);
+    } else {
+      record.count++;
+    }
+
+    // Auto-clean old records periodically
+    if (rateLimits.size > 5000) {
+      for (const [k, v] of rateLimits.entries()) {
+        if (now > v.resetAt) rateLimits.delete(k);
+      }
+    }
+
+    if (record.count > maxRequests) {
+      const retryAfter = Math.max(1, Math.ceil((record.resetAt - now) / 1000));
+      res.setHeader("Retry-After", String(retryAfter));
+      return res.status(429).json({
+        success: false,
+        error: "Limite de requisições excedido. Por favor, aguarde alguns instantes.",
+        retryAfter,
+      });
+    }
+    next();
+  };
+}
+
+const standardApiLimiter = createRateLimiter(250, 60 * 1000, "std");
+const aiLimiter = createRateLimiter(30, 60 * 1000, "ai");
+const syncLimiter = createRateLimiter(40, 60 * 1000, "sync");
+
+// Apply standard rate limiter to all API endpoints
+app.use("/api", standardApiLimiter);
+
+// Security Helper: Safe URI component decoder to avoid unhandled URIError
+function safeDecodeParam(val: string): string {
+  try {
+    return decodeURIComponent(val).trim();
+  } catch {
+    return String(val || "").replace(/[%+]/g, " ").trim();
+  }
+}
+
+// Security Helper: Escape SQL LIKE wildcards (prevents LIKE pattern injection)
+function escapeSqlLike(pattern: string): string {
+  return pattern.replace(/[%_\\]/g, "\\$&");
+}
+
+// Security Helper: Neutralize CSV Formula Injection (CWE-1236)
+function sanitizeCsvValue(val: any): string {
+  const str = String(val ?? "");
+  if (/^[=+\-@\t\r]/.test(str)) {
+    return `"'${str.replace(/"/g, '""')}"`;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+}
 
 // Lazy initialization of Gemini API
 let aiClient: GoogleGenAI | null = null;
@@ -261,43 +363,61 @@ app.post("/api/db/quotes", async (req, res) => {
 
     const budgetId = 'bud_' + Math.random().toString(36).substring(2, 11);
 
-    // Find customer id if exists
+    // Find customer id if exists (safe LIKE wildcard escaping)
     let customerId = null;
-    if (customerName) {
-      const cRes = await pool.query('SELECT id FROM "Customer" WHERE LOWER(name) LIKE LOWER($1) LIMIT 1;', [`%${customerName}%`]);
+    if (customerName && typeof customerName === "string" && customerName.trim()) {
+      const safeCustomerQuery = `%${escapeSqlLike(customerName.trim().slice(0, 100))}%`;
+      const cRes = await pool.query('SELECT id FROM "Customer" WHERE LOWER(name) LIKE LOWER($1) LIMIT 1;', [safeCustomerQuery]);
       customerId = cRes.rows[0]?.id || null;
     }
+
+    // If customer not found, fallback to first available customer to satisfy NOT NULL constraint
+    if (!customerId) {
+      const defaultCustRes = await pool.query('SELECT id FROM "Customer" ORDER BY "createdAt" ASC LIMIT 1;');
+      customerId = defaultCustRes.rows[0]?.id;
+    }
+
+    const safeTotal = typeof total === "number" && Number.isFinite(total) && total >= 0 ? total : 0;
+    const safeNumber = (typeof number === "string" && number.trim()) ? number.trim().slice(0, 50) : `DAV-${Date.now().toString().slice(-6)}`;
 
     await pool.query(`
       INSERT INTO "Budget" (id, number, "customerId", total, status, "tenantId", "createdAt", "updatedAt")
       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW());
-    `, [budgetId, number || `DAV-${Date.now().toString().slice(-6)}`, customerId, total || 0, status || 'PENDING', tenantId]);
+    `, [budgetId, safeNumber, customerId, safeTotal, status || 'PENDING', tenantId]);
 
-    // Insert items if provided
+    // Insert items if provided (capped at 200 items max to prevent DoS)
     if (Array.isArray(items)) {
-      for (const it of items) {
+      const boundedItems = items.slice(0, 200);
+      for (const it of boundedItems) {
         const itemId = 'bi_' + Math.random().toString(36).substring(2, 11);
+        const itemQty = typeof it.quantity === "number" && Number.isFinite(it.quantity) && it.quantity > 0 ? it.quantity : 1;
+        const itemPrice = typeof it.unitPrice === "number" && Number.isFinite(it.unitPrice) && it.unitPrice >= 0 ? it.unitPrice : 0;
         await pool.query(`
           INSERT INTO "BudgetItem" (id, "budgetId", "productId", quantity, "unitPrice", "createdAt")
           VALUES ($1, $2, $3, $4, $5, NOW());
-        `, [itemId, budgetId, it.productId || null, it.quantity || 1, it.unitPrice || 0]);
+        `, [itemId, budgetId, it.productId || null, itemQty, itemPrice]);
       }
     }
 
     res.json({ success: true, budgetId, message: "DAV / Orçamento registrado no Supabase com sucesso!" });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: "Falha segura ao salvar orçamento no Supabase." });
   }
 });
 
-// Sync GATO Catalog Products into Supabase
-app.post("/api/db/sync-catalog", async (req, res) => {
+// Sync GATO Catalog Products into Supabase (Rate limited and payload capped)
+app.post("/api/db/sync-catalog", syncLimiter, async (req, res) => {
   try {
     const pool = getDbPool();
     const { products } = req.body;
 
     if (!Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ success: false, error: "Nenhum produto fornecido para sincronização." });
+    }
+
+    // Security: Limit batch size to 500 items max per sync request
+    if (products.length > 500) {
+      return res.status(400).json({ success: false, error: "Limite máximo de 500 produtos por lote de sincronização." });
     }
 
     const tenantRes = await pool.query('SELECT id FROM "Tenant" LIMIT 1;');
@@ -310,8 +430,14 @@ app.post("/api/db/sync-catalog", async (req, res) => {
     let updated = 0;
 
     for (const p of products) {
-      const code = p.code || p.sku;
+      const code = String(p.code || p.sku || "").trim().slice(0, 100);
       if (!code) continue;
+
+      const pName = String(p.name || "").trim().slice(0, 255) || "Produto Automotivo";
+      const pBrand = String(p.brand || "GATO").trim().slice(0, 100);
+      const pCost = typeof p.costPrice === "number" && Number.isFinite(p.costPrice) && p.costPrice >= 0 ? p.costPrice : 0;
+      const pSale = typeof p.salePrice === "number" && Number.isFinite(p.salePrice) && p.salePrice >= 0 ? p.salePrice : 0;
+      const pMinStock = typeof p.minStock === "number" && Number.isFinite(p.minStock) && p.minStock >= 0 ? p.minStock : 5;
 
       // Check if product exists by SKU
       const existing = await pool.query('SELECT id FROM "Product" WHERE sku = $1 LIMIT 1;', [code]);
@@ -323,10 +449,11 @@ app.post("/api/db/sync-catalog", async (req, res) => {
           UPDATE "Product"
           SET name = $1, brand = $2, "costPrice" = $3, "salePrice" = $4, "minStock" = $5, "updatedAt" = NOW()
           WHERE id = $6;
-        `, [p.name, p.brand, p.costPrice || 0, p.salePrice || 0, p.minStock || 5, prodId]);
+        `, [pName, pBrand, pCost, pSale, pMinStock, prodId]);
 
         if (warehouseId && (p.stock !== undefined || p.currentStock !== undefined)) {
-          const qty = p.stock !== undefined ? p.stock : p.currentStock;
+          const rawQty = p.stock !== undefined ? p.stock : p.currentStock;
+          const qty = typeof rawQty === "number" && Number.isFinite(rawQty) ? Math.max(0, Math.floor(rawQty)) : 0;
           await pool.query(`
             INSERT INTO "StockLevel" (id, "productId", "warehouseId", quantity, reserved, "updatedAt")
             VALUES ($1, $2, $3, $4, 0, NOW())
@@ -340,10 +467,11 @@ app.post("/api/db/sync-catalog", async (req, res) => {
         await pool.query(`
           INSERT INTO "Product" (id, sku, name, brand, "costPrice", "salePrice", "minStock", active, "tenantId", "createdAt", "updatedAt")
           VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, NOW(), NOW());
-        `, [prodId, code, p.name, p.brand || "GATO", p.costPrice || 0, p.salePrice || 0, p.minStock || 5, tenantId]);
+        `, [prodId, code, pName, pBrand, pCost, pSale, pMinStock, tenantId]);
 
         if (warehouseId && (p.stock !== undefined || p.currentStock !== undefined)) {
-          const qty = p.stock !== undefined ? p.stock : p.currentStock;
+          const rawQty = p.stock !== undefined ? p.stock : p.currentStock;
+          const qty = typeof rawQty === "number" && Number.isFinite(rawQty) ? Math.max(0, Math.floor(rawQty)) : 0;
           const slId = 'sl_' + Math.random().toString(36).substring(2, 11);
           await pool.query(`
             INSERT INTO "StockLevel" (id, "productId", "warehouseId", quantity, reserved, "updatedAt")
@@ -362,7 +490,7 @@ app.post("/api/db/sync-catalog", async (req, res) => {
       total: inserted + updated
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: "Erro seguro ao sincronizar catálogo no Supabase." });
   }
 });
 
@@ -570,7 +698,7 @@ app.get("/api/vehicles", (req, res) => {
 // GET /api/vehicles/:identifier - Detalhes do veículo por ID ou Placa/Chassi
 app.get("/api/vehicles/:identifier", (req, res) => {
   try {
-    const rawParam = decodeURIComponent(req.params.identifier).toUpperCase();
+    const rawParam = safeDecodeParam(req.params.identifier).toUpperCase();
     const vehicle = fleetVehicles.find(v => v.id.toUpperCase() === rawParam || v.veiculo.toUpperCase() === rawParam);
 
     if (!vehicle) {
@@ -579,7 +707,7 @@ app.get("/api/vehicles/:identifier", (req, res) => {
 
     res.json({ success: true, data: vehicle });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: "Erro seguro ao buscar veículo." });
   }
 });
 
@@ -663,7 +791,7 @@ app.post("/api/vehicles", (req, res) => {
 // PUT /api/vehicles/:identifier - Edição de veículo (por ID ou Placa/Chassi)
 app.put("/api/vehicles/:identifier", (req, res) => {
   try {
-    const rawParam = decodeURIComponent(req.params.identifier).toUpperCase();
+    const rawParam = safeDecodeParam(req.params.identifier).toUpperCase();
     const index = fleetVehicles.findIndex(v => v.id.toUpperCase() === rawParam || v.veiculo.toUpperCase() === rawParam);
 
     if (index === -1) {
@@ -740,14 +868,14 @@ app.put("/api/vehicles/:identifier", (req, res) => {
       data: fleetVehicles[index]
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: "Erro seguro ao atualizar veículo." });
   }
 });
 
 // DELETE /api/vehicles/:identifier - Exclusão de veículo (por ID ou Placa/Chassi)
 app.delete("/api/vehicles/:identifier", (req, res) => {
   try {
-    const rawParam = decodeURIComponent(req.params.identifier).toUpperCase();
+    const rawParam = safeDecodeParam(req.params.identifier).toUpperCase();
     const index = fleetVehicles.findIndex(v => v.id.toUpperCase() === rawParam || v.veiculo.toUpperCase() === rawParam);
 
     if (index === -1) {
@@ -762,7 +890,7 @@ app.delete("/api/vehicles/:identifier", (req, res) => {
       deletedVeiculo: deleted.veiculo
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: "Erro seguro ao excluir veículo." });
   }
 });
 
@@ -906,7 +1034,7 @@ app.get("/api/parts-application/filter", (req, res) => {
 // GET /api/parts-application/reverse/:code - Consulta reversa (Peça -> Veículos da Frota)
 app.get("/api/parts-application/reverse/:code", (req, res) => {
   try {
-    const code = decodeURIComponent(req.params.code);
+    const code = safeDecodeParam(req.params.code);
     const lookup = reverseLookupVehiclesForPart(INITIAL_PRODUCTS, code);
     
     if (!lookup.product) {
@@ -921,7 +1049,7 @@ app.get("/api/parts-application/reverse/:code", (req, res) => {
       customApplications: lookup.customApplications
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: "Erro seguro ao processar consulta reversa." });
   }
 });
 
@@ -946,19 +1074,20 @@ app.get("/api/parts-application/export", (req, res) => {
         "CODIGO_FIPE_REF"
       ];
 
+      // Security: Neutralize CSV Formula Injection on all text fields
       const rows = BRAZILIAN_FLEET_DATABASE.map(v => [
-        `"${v.id}"`,
-        `"${v.montadora}"`,
-        `"${v.modelo.replace(/"/g, '""')}"`,
-        `"${v.segmento}"`,
-        `"${v.geracaoFase.replace(/"/g, '""')}"`,
+        sanitizeCsvValue(v.id),
+        sanitizeCsvValue(v.montadora),
+        sanitizeCsvValue(v.modelo),
+        sanitizeCsvValue(v.segmento),
+        sanitizeCsvValue(v.geracaoFase),
         v.anoInicio,
         v.anoFim,
-        `"${v.motores.join("; ").replace(/"/g, '""')}"`,
-        `"${v.combustiveis.join("; ")}"`,
-        `"${v.sistemasCompativeis.join("; ")}"`,
-        `"${(v.pecasChave || []).join("; ").replace(/"/g, '""')}"`,
-        `"${v.fipeReferencia || ''}"`
+        sanitizeCsvValue(v.motores.join("; ")),
+        sanitizeCsvValue(v.combustiveis.join("; ")),
+        sanitizeCsvValue(v.sistemasCompativeis.join("; ")),
+        sanitizeCsvValue((v.pecasChave || []).join("; ")),
+        sanitizeCsvValue(v.fipeReferencia || '')
       ]);
 
       const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\r\n");
@@ -1004,8 +1133,8 @@ app.get("/api/parts-application/export", (req, res) => {
   }
 });
 
-// Gemini Assistant for Auto Parts, XML Analysis, and Technical Support
-app.post("/api/gemini/assist", async (req, res) => {
+// Gemini Assistant for Auto Parts, XML Analysis, and Technical Support (Rate limited)
+app.post("/api/gemini/assist", aiLimiter, async (req, res) => {
   try {
     const { prompt, contextType, partData } = req.body;
     const ai = getGeminiClient();
@@ -1063,18 +1192,22 @@ Compatibilidade identificada com base no catálogo automotivo nacional:
     console.error("Gemini assist error:", error);
     res.status(500).json({ 
       error: "Falha ao processar solicitação de IA", 
-      details: error.message,
       fallbackResponse: "O sistema GATO processou os parâmetros locais de compatibilidade veicular e tabela NCM com sucesso." 
     });
   }
 });
 
-// XML NF-e parser endpoint
+// XML NF-e parser endpoint (Guarded against ReDoS and memory exhaustion)
 app.post("/api/xml/parse", (req, res) => {
   try {
     const { xmlContent } = req.body;
     if (!xmlContent || typeof xmlContent !== "string") {
-      return res.status(400).json({ error: "Conteúdo XML não fornecido." });
+      return res.status(400).json({ error: "Conteúdo XML não fornecido ou formato inválido." });
+    }
+
+    // Security: Reject excessively large XML payloads (> 10MB)
+    if (xmlContent.length > 10 * 1024 * 1024) {
+      return res.status(413).json({ error: "Arquivo XML excede o tamanho máximo suportado de 10MB." });
     }
 
     // Fast robust XML regex parsing for Brazilian NF-e 4.00
@@ -1104,12 +1237,14 @@ app.post("/api/xml/parse", (req, res) => {
       vNF: vNFMatch ? parseFloat(vNFMatch[1]) : 0,
     };
 
-    // Extract det items
+    // Extract det items (Cap at 1,000 items max to prevent CPU exhaustion)
     const detRegex = /<det nItem="(\d+)">([\s\S]*?)<\/det>/g;
     const items = [];
     let match;
+    let count = 0;
 
-    while ((match = detRegex.exec(xmlContent)) !== null) {
+    while ((match = detRegex.exec(xmlContent)) !== null && count < 1000) {
+      count++;
       const itemContent = match[2];
       const cProdMatch = itemContent.match(/<cProd>([^<]+)<\/cProd>/);
       const cEANMatch = itemContent.match(/<cEAN>([^<]+)<\/cEAN>/);
@@ -1144,7 +1279,7 @@ app.post("/api/xml/parse", (req, res) => {
     });
   } catch (err: any) {
     console.error("XML parse error:", err);
-    res.status(500).json({ error: "Erro ao processar o arquivo XML", message: err.message });
+    res.status(500).json({ error: "Erro seguro ao processar o arquivo XML" });
   }
 });
 
@@ -1158,6 +1293,30 @@ app.post("/api/marketplaces/webhook", (req, res) => {
     event,
     timestamp: new Date().toISOString(),
     status: "processed",
+  });
+});
+
+// Global safe error handler (prevents stack trace disclosure and handles unhandled exceptions)
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("[GATO Security Watchdog] Captured unhandled error:", err?.message || err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  if (err instanceof SyntaxError && "body" in err) {
+    return res.status(400).json({
+      success: false,
+      error: "Corpo da requisição JSON inválido ou malformado.",
+    });
+  }
+  if (err instanceof URIError || (typeof err?.message === "string" && err.message.includes("Failed to decode param"))) {
+    return res.status(400).json({
+      success: false,
+      error: "Parâmetro de URL com codificação inválida.",
+    });
+  }
+  res.status(500).json({
+    success: false,
+    error: "Ocorreu um erro no processamento interno da requisição.",
   });
 });
 
