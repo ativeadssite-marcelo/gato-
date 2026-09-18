@@ -46,6 +46,7 @@ interface ClientesOrcamentosProps {
   onUpdateQuotes: (quotes: Quote[]) => void;
   onConvertQuoteToSale: (quote: Quote) => void;
   onNavigateToQuoteWithCustomer?: (customer: Customer) => void;
+  onTabChange?: (tab: 'orcamentos' | 'clientes' | 'politicas') => void;
   onShowNotification: (title: string, message: string, type?: 'success' | 'warning' | 'info') => void;
 }
 
@@ -58,6 +59,7 @@ export const ClientesOrcamentos: React.FC<ClientesOrcamentosProps> = ({
   onUpdateQuotes,
   onConvertQuoteToSale,
   onNavigateToQuoteWithCustomer,
+  onTabChange,
   onShowNotification,
 }) => {
   // Tabs: 'orcamentos' | 'clientes' | 'politicas'
@@ -68,6 +70,11 @@ export const ClientesOrcamentos: React.FC<ClientesOrcamentosProps> = ({
       setActiveTab(initialTab);
     }
   }, [initialTab]);
+
+  const handleTabSelect = (tab: 'orcamentos' | 'clientes' | 'politicas') => {
+    setActiveTab(tab);
+    onTabChange?.(tab);
+  };
 
   // Search and filters
   const [searchQuoteTerm, setSearchQuoteTerm] = useState('');
@@ -322,8 +329,8 @@ export const ClientesOrcamentos: React.FC<ClientesOrcamentosProps> = ({
       <div className="bg-white rounded-xl p-1.5 border border-sky-50 shadow-xs flex items-center gap-1">
         <button
           type="button"
-          onClick={() => setActiveTab('orcamentos')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
+          onClick={() => handleTabSelect('orcamentos')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
             activeTab === 'orcamentos' 
               ? 'bg-[#0C4A6E] text-white shadow-xs' 
               : 'text-slate-600 hover:bg-slate-100'
@@ -335,8 +342,8 @@ export const ClientesOrcamentos: React.FC<ClientesOrcamentosProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveTab('clientes')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
+          onClick={() => handleTabSelect('clientes')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
             activeTab === 'clientes' 
               ? 'bg-[#0C4A6E] text-white shadow-xs' 
               : 'text-slate-600 hover:bg-slate-100'
@@ -348,8 +355,8 @@ export const ClientesOrcamentos: React.FC<ClientesOrcamentosProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveTab('politicas')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
+          onClick={() => handleTabSelect('politicas')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
             activeTab === 'politicas' 
               ? 'bg-[#0C4A6E] text-white shadow-xs' 
               : 'text-slate-600 hover:bg-slate-100'

@@ -118,16 +118,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       aliases: ['cotacao', 'nfe-venda'],
     },
     {
-      id: 'clientes-orcamentos',
+      id: 'orcamentos',
       label: 'Orçamentos',
       icon: FileText,
-      aliases: ['clientes-orcamentos'],
+      aliases: ['orcamentos', 'clientes-orcamentos'],
     },
     {
       id: 'clientes',
       label: 'Clientes',
       icon: Users,
-      aliases: ['clientes', 'clientes-orcamentos'],
+      aliases: ['clientes'],
     },
     {
       id: 'fornecedores',

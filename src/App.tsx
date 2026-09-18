@@ -896,7 +896,7 @@ export default function App() {
             />
           )}
 
-          {(currentView === 'clientes-orcamentos' || currentView === 'clientes') && (
+          {(currentView === 'orcamentos' || currentView === 'clientes-orcamentos' || currentView === 'clientes') && (
             <ClientesOrcamentos
               initialTab={currentView === 'clientes' ? 'clientes' : 'orcamentos'}
               customers={customers}
@@ -908,6 +908,10 @@ export default function App() {
               onNavigateToQuoteWithCustomer={(cust) => {
                 setSelectedCustomerForQuote(cust);
                 setCurrentView('cotacao');
+              }}
+              onTabChange={(tab) => {
+                if (tab === 'clientes') setCurrentView('clientes');
+                else if (tab === 'orcamentos') setCurrentView('orcamentos');
               }}
               onShowNotification={showNotification}
             />
