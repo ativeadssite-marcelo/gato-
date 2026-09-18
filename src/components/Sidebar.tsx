@@ -133,7 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'fornecedores',
       label: 'Fornecedores',
       icon: Building2,
-      aliases: ['fornecedores', 'pedidos'],
+      aliases: ['fornecedores'],
     },
     {
       id: 'relatorios',

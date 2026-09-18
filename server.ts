@@ -230,6 +230,26 @@ app.get("/api/db/suppliers", async (req, res) => {
   }
 });
 
+// Create/Register supplier in Supabase
+app.post("/api/db/suppliers", async (req, res) => {
+  try {
+    const pool = getDbPool();
+    const { name, cnpj, contact, phone, email, address } = req.body;
+    const tenantRes = await pool.query('SELECT id FROM "Tenant" LIMIT 1;');
+    const tenantId = tenantRes.rows[0]?.id || "cmtt58e6o0000ju346a0g6s32";
+    const id = `sup_${Date.now()}`;
+    const insertRes = await pool.query(
+      `INSERT INTO "Supplier" (id, "tenantId", name, cnpj, contact, phone, email, address, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+       RETURNING *;`,
+      [id, tenantId, name, cnpj || null, contact || null, phone || null, email || null, address || null]
+    );
+    res.json({ success: true, supplier: insertRes.rows[0] });
+  } catch (err: any) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
 // Save Budget/DAV into Supabase
 app.post("/api/db/quotes", async (req, res) => {
   try {

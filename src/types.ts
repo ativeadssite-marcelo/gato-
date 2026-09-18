@@ -233,6 +233,36 @@ export interface QuoteItem {
   locationStr: string;
 }
 
+export interface Supplier {
+  id: string;
+  name: string; // Razão Social
+  fantasyName?: string; // Nome Fantasia
+  cnpj: string;
+  ie?: string; // Inscrição Estadual
+  contact?: string; // Vendedor / Representante
+  phone: string;
+  whatsapp?: string;
+  email?: string;
+  cep?: string;
+  address?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  category?: 'distribuidora' | 'fabricante' | 'importadora' | 'motos' | 'diesel' | 'quimicos' | 'outros';
+  paymentTerms?: string; // ex: "28/42/56 dias", "30 dias", "À vista"
+  leadTimeDays?: number; // ex: 2 dias
+  minOrderValue?: number; // R$ pedido mínimo
+  freightType?: 'CIF' | 'FOB';
+  rating?: number; // 1 a 5
+  status?: 'ativo' | 'inativo' | 'bloqueado';
+  brandsSupplied?: string[];
+  notes?: string;
+  totalPurchases?: number;
+  lastPurchaseDate?: string;
+  createdAt?: string;
+}
+
 export interface CustomerVehicle {
   id: string;
   plate: string;

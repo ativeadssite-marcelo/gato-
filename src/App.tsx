@@ -22,10 +22,12 @@ import { TrocaFilialCdModal } from './components/TrocaFilialCdModal';
 import { FinanceiroCompleto } from './components/FinanceiroCompleto';
 import { CatalogoDigitalWeb } from './components/CatalogoDigitalWeb';
 import { ConsultaPecasView } from './components/ConsultaPecasView';
+import { FornecedoresManager } from './components/FornecedoresManager';
 
 import { 
   INITIAL_PRODUCTS, 
   INITIAL_CUSTOMERS, 
+  INITIAL_SUPPLIERS,
   INITIAL_MARKETPLACES, 
   INITIAL_ORDERS, 
   INITIAL_INVOICES, 
@@ -44,6 +46,7 @@ import {
   Product, 
   Order, 
   Customer, 
+  Supplier,
   InvoiceRecord, 
   MarketplaceSetting, 
   PushNotification, 
@@ -182,6 +185,26 @@ export default function App() {
       console.warn('Erro ao salvar clientes no localStorage', e);
     }
   }, [customers]);
+
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
+    try {
+      const saved = localStorage.getItem('gato_suppliers');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar fornecedores do localStorage', e);
+    }
+    return INITIAL_SUPPLIERS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gato_suppliers', JSON.stringify(suppliers));
+    } catch (e) {
+      console.warn('Erro ao salvar fornecedores no localStorage', e);
+    }
+  }, [suppliers]);
   const [marketplaces, setMarketplaces] = useState<MarketplaceSetting[]>(INITIAL_MARKETPLACES);
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>(INITIAL_INVOICES);
@@ -886,6 +909,16 @@ export default function App() {
                 setSelectedCustomerForQuote(cust);
                 setCurrentView('cotacao');
               }}
+              onShowNotification={showNotification}
+            />
+          )}
+
+          {currentView === 'fornecedores' && (
+            <FornecedoresManager
+              suppliers={suppliers}
+              products={products}
+              onUpdateSuppliers={setSuppliers}
+              onNavigateToXmlImport={() => setCurrentView('xml-import')}
               onShowNotification={showNotification}
             />
           )}
